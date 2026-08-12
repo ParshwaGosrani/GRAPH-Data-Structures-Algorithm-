@@ -1,0 +1,10 @@
+# Compiled C files
+*.exe
+*.o
+*.out
+
+# Python files
+__pycache__/
+*.pyc
+env/
+venv/

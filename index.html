@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart City Navigation</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body { margin: 0; padding: 20px; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; }
+        .container { display: flex; gap: 20px; width: 100%; max-width: 1100px; margin-top: 20px; }
+        .controls { width: 320px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .canvas-card { flex-grow: 1; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        select, button { width: 100%; padding: 10px; margin-top: 8px; border-radius: 6px; font-size: 1rem; }
+        button { background: #3182ce; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        #output { margin-top: 20px; padding: 12px; border-radius: 6px; background: #edf2f7; font-size: 0.9rem; }
+        canvas { border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa; }
+    </style>
+</head>
+<body>
+    <h1>🏙️ Smart City Navigation System</h1>
+    <p>Powered by C Backend | Visualized in Web | Authors: Parshwa & Harshil</p>
+
+    <div class="container">
+        <div class="controls">
+            <h3>Route Finder</h3>
+            <label>Source:</label><select id="src"></select>
+            <label>Destination:</label><select id="dest"></select>
+            <button onclick="findRoute()">Find Route (Run C Code)</button>
+            <div id="output">Waiting for query...</div>
+        </div>
+        <div class="canvas-card">
+            <canvas id="mapCanvas" width="700" height="450"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const nodes = [
+            { id: 0, name: "Hospital", x: 120, y: 100 }, { id: 1, name: "City Center", x: 350, y: 100 },
+            { id: 2, name: "Railway Station", x: 580, y: 100 }, { id: 3, name: "Residential Area", x: 200, y: 260 },
+            { id: 4, name: "Airport", x: 580, y: 350 }, { id: 5, name: "Shopping Mall", x: 420, y: 240 },
+            { id: 6, name: "Police Station", x: 120, y: 380 }
+        ];
+        const edges = [
+            { u: 0, v: 1, w: 5 }, { u: 0, v: 3, w: 8 }, { u: 1, v: 2, w: 4 }, { u: 1, v: 3, w: 2 },
+            { u: 1, v: 5, w: 3 }, { u: 2, v: 4, w: 6 }, { u: 3, v: 6, w: 4 }, { u: 5, v: 4, w: 7 }, { u: 6, v: 0, w: 10 }
+        ];
+
+        let highlightedNodes = [], highlightedEdges = [];
+
+        function drawMap() {
+            const ctx = document.getElementById('mapCanvas').getContext('2d');
+            ctx.clearRect(0, 0, 700, 450);
+            
+            edges.forEach(e => {
+                const u = nodes[e.u], v = nodes[e.v];
+                const active = highlightedEdges.some(he => (he.u == e.u && he.v == e.v) || (he.u == e.v && he.v == e.u));
+                ctx.beginPath(); ctx.moveTo(u.x, u.y); ctx.lineTo(v.x, v.y);
+                ctx.strokeStyle = active ? "#e53e3e" : "#cbd5e0"; ctx.lineWidth = active ? 4 : 2; ctx.stroke();
+                
+                const mx = (u.x+v.x)/2, my = (u.y+v.y)/2;
+                ctx.fillStyle = "#edf2f7"; ctx.beginPath(); ctx.arc(mx, my, 12, 0, 2*Math.PI); ctx.fill();
+                ctx.fillStyle = "#2d3748"; ctx.font = "11px Arial"; ctx.textAlign = "center"; ctx.fillText(`${e.w}km`, mx, my+4);
+            });
+
+            nodes.forEach(n => {
+                const active = highlightedNodes.includes(n.id);
+                ctx.beginPath(); ctx.arc(n.x, n.y, 22, 0, 2*Math.PI);
+                ctx.fillStyle = active ? "#38a169" : "#3182ce"; ctx.fill();
+                ctx.fillStyle = "white"; ctx.font = "bold 13px Arial"; ctx.fillText(n.id, n.x, n.y+4);
+                ctx.fillStyle = "#1a202c"; ctx.font = "bold 12px Arial"; ctx.fillText(n.name, n.x, n.y+35);
+            });
+        }
+
+        window.onload = () => {
+            nodes.forEach(n => {
+                document.getElementById('src').add(new Option(n.name, n.id));
+                document.getElementById('dest').add(new Option(n.name, n.id));
+            });
+            document.getElementById('dest').value = 4;
+            drawMap();
+        };
+
+        // 🚀 THIS IS THE BRIDGE: The Webpage asks Python, Python asks C!
+        async function findRoute() {
+            document.getElementById('output').innerHTML = "Calculating via C backend...";
+            let src = document.getElementById('src').value;
+            let dest = document.getElementById('dest').value;
+
+            try {
+                // Call Python server
+                let response = await fetch(`http://127.0.0.1:5000/get-route?src=${src}&dest=${dest}`);
+                let data = await response.json();
+                
+                let raw_output = data.raw_output; // E.g., "PATH:0,1,5,4|DIST:15"
+
+                if (raw_output.includes("ERROR")) {
+                    document.getElementById('output').innerHTML = "No path exists!";
+                    highlightedNodes = []; highlightedEdges = [];
+                } else {
+                    // Parse the C string back into arrays for the web canvas
+                    let parts = raw_output.split("|");
+                    let pathString = parts[0].replace("PATH:", ""); // "0,1,5,4"
+                    let distString = parts[1].replace("DIST:", ""); // "15"
+
+                    let pathArr = pathString.split(",").map(Number);
+                    
+                    highlightedNodes = pathArr;
+                    highlightedEdges = [];
+                    for(let i=0; i<pathArr.length-1; i++) highlightedEdges.push({u: pathArr[i], v: pathArr[i+1]});
+
+                    document.getElementById('output').innerHTML = `
+                        <strong>✅ Calculated natively in C!</strong><br><br>
+                        <strong>Nodes:</strong> ${pathString.split(",").join(" ➔ ")}<br>
+                        <strong>Distance:</strong> ${distString} km
+                    `;
+                }
+                drawMap();
+            } catch (err) {
+                document.getElementById('output').innerHTML = "⚠️ Python Server is not running!";
+            }
+        }
+    </script>
+</body>
+</html>
