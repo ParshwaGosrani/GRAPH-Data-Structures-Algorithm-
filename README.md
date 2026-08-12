@@ -86,7 +86,3 @@ python src/server.py
 ## License
 
 Developed for educational purposes as part of the university curriculum.
-
-```
-
-```
